@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MediaStation.Unpack.Cli/MediaStation.Unpack.Cli.csproj" />
+    <Project Path="src/MediaStation.Unpack/MediaStation.Unpack.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MediaStation.Unpack.Tests/MediaStation.Unpack.Tests.csproj" />
+  </Folder>
+</Solution>

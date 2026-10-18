@@ -1,0 +1,16 @@
+# Build outputs
+Artifacts/
+artifacts/
+[Bb]in/
+[Oo]bj/
+
+# IDE and tooling
+.vs/
+.vscode/
+*.user
+*.suo
+*.code-workspace
+
+# System & temporary files
+.DS_Store
+Thumbs.db
