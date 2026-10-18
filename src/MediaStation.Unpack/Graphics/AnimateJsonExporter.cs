@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MediaStation.Unpack.Actors;
 using MediaStation.Unpack.Core;
+using MediaStation.Unpack.Metadata;
 using MediaStation.Unpack.Model;
 
 namespace MediaStation.Unpack.Graphics;
@@ -14,6 +15,13 @@ public class AnimateJsonExportOptions
 
     public int DefaultStageWidth { get; set; } = 640;
     public int DefaultStageHeight { get; set; } = 480;
+
+    /// <summary>
+    /// When true, removes movie frame storage optimization:
+    /// - Shared base images that never exist in isolation are cleared (fully transparent).
+    /// - Dependent frames sharing those time slices are composited with the base image.
+    /// </summary>
+    public bool DeoptimizeMovieSharedImages { get; set; } = true;
 }
 
 public static class AnimateJsonExporter
@@ -52,6 +60,11 @@ public static class AnimateJsonExporter
         foreach (var movie in validMovies)
         {
             movie.DecompressAllFrames();
+
+            if (options.DeoptimizeMovieSharedImages)
+            {
+                DeoptimizeMovieSharedImages(movie);
+            }
 
             string movieName = !string.IsNullOrWhiteSpace(movie.Name)
                 ? CleanAssetName(movie.Name, MoviePrefixes)
@@ -484,5 +497,211 @@ public static class AnimateJsonExporter
         var invalid = Path.GetInvalidFileNameChars();
         var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
         return new string(chars).Trim();
+    }
+
+    /// <summary>
+    /// Removes movie frame storage optimization:
+    /// - Identifies shared base images that span multiple frames and never exist in isolation.
+    /// - Composites dependent frames sharing those time slices with the base image in correct render order.
+    /// - Updates dependent frame positions (LeftTop) to match the composited bounding box.
+    /// - Clears shared base images to fully transparent PNGs, preserving original dimensions and file list.
+    /// </summary>
+    public static void DeoptimizeMovieSharedImages(StreamMovieActor movie)
+    {
+        if (movie.Frames.Count == 0 || movie.Images.Count == 0)
+            return;
+
+        movie.DecompressAllFrames();
+
+        var imageMap = new Dictionary<uint, PixMapImage>();
+        foreach (var img in movie.Images)
+        {
+            imageMap.TryAdd(img.Index, img.Image);
+        }
+
+        var frameIndexMap = movie.Frames
+            .Select((f, idx) => (f, idx))
+            .ToDictionary(x => x.f, x => x.idx);
+
+        // Process each movie layer independently
+        foreach (var layerGroup in movie.Frames.GroupBy(f => f.LayerId))
+        {
+            var layerFrames = layerGroup
+                .Where(f => f.EndInMilliseconds > f.StartInMilliseconds && f.Index != 0)
+                .ToList();
+
+            if (layerFrames.Count == 0)
+                continue;
+
+            // 1. Collect distinct time slice boundaries on this layer
+            var timePoints = new SortedSet<uint>();
+            foreach (var f in layerFrames)
+            {
+                timePoints.Add(f.StartInMilliseconds);
+                timePoints.Add(f.EndInMilliseconds);
+            }
+            var timeList = timePoints.ToList();
+            if (timeList.Count < 2)
+                continue;
+
+            // 2. Map image occurrences across time slices on this layer
+            var imgSlices = new Dictionary<uint, List<(uint Start, uint End, int ActiveCount)>>();
+            var slices = new List<(uint Start, uint End, List<MovieFrame> Active)>();
+
+            for (int i = 0; i < timeList.Count - 1; i++)
+            {
+                uint tStart = timeList[i];
+                uint tEnd = timeList[i + 1];
+                if (tEnd <= tStart) continue;
+
+                var active = layerFrames
+                    .Where(f => f.StartInMilliseconds <= tStart && f.EndInMilliseconds >= tEnd)
+                    .ToList();
+
+                if (active.Count == 0) continue;
+
+                slices.Add((tStart, tEnd, active));
+
+                foreach (var f in active)
+                {
+                    if (!imgSlices.ContainsKey(f.Index))
+                        imgSlices[f.Index] = new();
+                    imgSlices[f.Index].Add((tStart, tEnd, active.Count));
+                }
+            }
+
+            // 3. Identify shared base images:
+            // - Active across multiple slices (spans multiple frames)
+            // - Co-occurs with other frames (activeCount > 1)
+            // - NEVER exists in isolation on this layer (activeCount > 1 in ALL its slices)
+            var layerSharedBases = new HashSet<uint>();
+            foreach (var (imgIdx, sliceList) in imgSlices)
+            {
+                if (sliceList.Count > 1 &&
+                    sliceList.Any(s => s.ActiveCount > 1) &&
+                    !sliceList.Any(s => s.ActiveCount == 1) &&
+                    imageMap.TryGetValue(imgIdx, out var pm) && pm.Width > 0 && pm.Height > 0)
+                {
+                    layerSharedBases.Add(imgIdx);
+                }
+            }
+
+            if (layerSharedBases.Count == 0)
+                continue;
+
+            // 4. Merge dependent frames in each slice where a shared base appears
+            foreach (var (tStart, tEnd, active) in slices)
+            {
+                var basesInSlice = active.Where(f => layerSharedBases.Contains(f.Index)).ToList();
+                if (basesInSlice.Count == 0)
+                    continue;
+
+                foreach (var baseFrame in basesInSlice)
+                {
+                    if (!imageMap.TryGetValue(baseFrame.Index, out var basePixmap))
+                        continue;
+
+                    // Find overlapping dependent frame(s)
+                    var overlappingDeps = active
+                        .Where(f => f != baseFrame && !layerSharedBases.Contains(f.Index))
+                        .Where(f => imageMap.ContainsKey(f.Index) && RectanglesIntersect(baseFrame.LeftTop, basePixmap, f.LeftTop, imageMap[f.Index]))
+                        .ToList();
+
+                    if (overlappingDeps.Count == 0)
+                        continue;
+
+                    // In MediaStation movies, each slice has exactly 1 dependent patch per shared base
+                    var depFrame = overlappingDeps[0];
+                    var depPixmap = imageMap[depFrame.Index];
+
+                    // Compute union bounding box
+                    int minX = Math.Min(baseFrame.LeftTop.X, depFrame.LeftTop.X);
+                    int minY = Math.Min(baseFrame.LeftTop.Y, depFrame.LeftTop.Y);
+                    int maxX = Math.Max(baseFrame.LeftTop.X + basePixmap.Width, depFrame.LeftTop.X + depPixmap.Width);
+                    int maxY = Math.Max(baseFrame.LeftTop.Y + basePixmap.Height, depFrame.LeftTop.Y + depPixmap.Height);
+
+                    int canvasW = Math.Max(1, maxX - minX);
+                    int canvasH = Math.Max(1, maxY - minY);
+
+                    // Sort in engine display order:
+                    // Higher ZIndex drawn first (background), lower ZIndex drawn on top (foreground).
+                    // For equal ZIndex, lower Order drawn first, higher Order drawn on top.
+                    var orderedFrames = new[] { baseFrame, depFrame }
+                        .OrderByDescending(f => f.ZIndex)
+                        .ThenBy(f => frameIndexMap[f])
+                        .ToList();
+
+                    byte[] mergedPixels = new byte[canvasW * canvasH];
+
+                    foreach (var f in orderedFrames)
+                    {
+                        var pxmap = imageMap[f.Index];
+                        int destX = f.LeftTop.X - minX;
+                        int destY = f.LeftTop.Y - minY;
+                        byte transparentIdx = pxmap.TransparentColorIndex ?? 0;
+
+                        for (int y = 0; y < pxmap.Height; y++)
+                        {
+                            int srcRow = y * pxmap.Width;
+                            int dstRow = (destY + y) * canvasW + destX;
+
+                            for (int x = 0; x < pxmap.Width; x++)
+                            {
+                                byte val = pxmap.Pixels[srcRow + x];
+                                if (val != transparentIdx)
+                                {
+                                    mergedPixels[dstRow + x] = val;
+                                }
+                            }
+                        }
+                    }
+
+                    var newInfo = new ImageInfo(canvasW, canvasH, BitmapCompressionType.UncompressedTransparentBitmap);
+                    var mergedPixMap = new PixMapImage(newInfo, mergedPixels, transparentColorIndex: 0);
+
+                    // Update dependent frame position and image
+                    depFrame.LeftTop = new Point(minX, minY);
+                    imageMap[depFrame.Index] = mergedPixMap;
+
+                    for (int m = 0; m < movie.Images.Count; m++)
+                    {
+                        if (movie.Images[m].Index == depFrame.Index)
+                        {
+                            movie.Images[m] = new MovieImageData(depFrame.Index, movie.Images[m].KeyframeEndInMilliseconds, mergedPixMap);
+                        }
+                    }
+                }
+            }
+
+            // 5. Clear all shared base images on this layer to fully transparent
+            foreach (uint baseIdx in layerSharedBases)
+            {
+                if (!imageMap.TryGetValue(baseIdx, out var origImg))
+                    continue;
+
+                var clearInfo = new ImageInfo(origImg.Width, origImg.Height, BitmapCompressionType.UncompressedTransparentBitmap);
+                var clearPixels = new byte[origImg.Width * origImg.Height];
+                var clearPixMap = new PixMapImage(clearInfo, clearPixels, transparentColorIndex: 0);
+
+                imageMap[baseIdx] = clearPixMap;
+
+                for (int m = 0; m < movie.Images.Count; m++)
+                {
+                    if (movie.Images[m].Index == baseIdx)
+                    {
+                        movie.Images[m] = new MovieImageData(baseIdx, movie.Images[m].KeyframeEndInMilliseconds, clearPixMap);
+                    }
+                }
+            }
+        }
+    }
+
+    private static bool RectanglesIntersect(Point pA, PixMapImage imgA, Point pB, PixMapImage imgB)
+    {
+        int ax1 = pA.X, ay1 = pA.Y;
+        int ax2 = ax1 + imgA.Width, ay2 = ay1 + imgA.Height;
+        int bx1 = pB.X, by1 = pB.Y;
+        int bx2 = bx1 + imgB.Width, by2 = by1 + imgB.Height;
+        return ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1;
     }
 }

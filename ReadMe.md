@@ -48,25 +48,25 @@ dotnet run --project src/MediaStation.Unpack.Cli -- <path-to-game-boot-or-contex
 
 Extract all graphics from a game disc to an output folder:
 
-```cmd
-dotnet run --project src/MediaStation.Unpack.Cli -- "D:\" -o "C:\Output\Game"
+```sh
+dotnet run --project src/MediaStation.Unpack.Cli -- "D:" -o "C:\Output\Game"
 ```
 
 Extract animations as both GIF and APNG:
 
-```cmd
-dotnet run --project src/MediaStation.Unpack.Cli -- "D:\" -o "C:\Output\Game" -af gif,png
+```sh
+dotnet run --project src/MediaStation.Unpack.Cli -- "D:" -o "C:\Output\Game" -af gif,png
 ```
 
 Extract animations as Adobe Animate JSON packages for After Effects:
 
-```cmd
+```sh
 dotnet run --project src/MediaStation.Unpack.Cli -- "D:\DATA\174.CXT" -o "C:\Output\Game" -af json-animate
 ```
 
 Extract graphics and audio from a specific context file:
 
-```cmd
+```sh
 dotnet run --project src/MediaStation.Unpack.Cli -- "D:\DATA\174.CXT" -o "C:\Output\Game" -e all
 ```
 

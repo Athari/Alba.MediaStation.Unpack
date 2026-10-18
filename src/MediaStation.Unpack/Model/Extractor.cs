@@ -16,6 +16,7 @@ public class ExtractOptions
     public bool Verbose { get; set; }
     public List<GraphicFormat> ImageFormats { get; set; } = [GraphicFormat.Png];
     public List<GraphicFormat> AnimationFormats { get; set; } = [GraphicFormat.Png];
+    public bool DeoptimizeMovieSharedImages { get; set; } = true;
 }
 
 public class Extractor
@@ -285,10 +286,16 @@ public class Extractor
         // 4. Adobe Animate JSON Export
         if (exportJsonAnimate)
         {
+            var animateOptions = new AnimateJsonExportOptions
+            {
+                DeoptimizeMovieSharedImages = _options.DeoptimizeMovieSharedImages
+            };
+
             AnimateJsonExporter.ExportContext(
                 context,
                 palette,
                 contextOutDir,
+                options: animateOptions,
                 getParamTokenName: _title.GetParamTokenName,
                 logger: _logger);
         }
