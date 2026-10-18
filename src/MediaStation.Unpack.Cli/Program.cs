@@ -33,7 +33,7 @@ public static class Program
 
         var animationFormatOption = new Option<string>("--animation-format")
         {
-            Description = "Animation formats: comma-separated list ('png', 'webp', 'gif'). Default: png",
+            Description = "Animation formats: comma-separated list ('png', 'webp', 'gif', 'json-animate'). Default: png",
             Aliases = { "-af" }
         };
 
@@ -114,6 +114,9 @@ public static class Program
                     break;
                 case "gif":
                     if (!list.Contains(GraphicFormat.Gif)) list.Add(GraphicFormat.Gif);
+                    break;
+                case "json-animate" or "animate-json" or "animate" or "json":
+                    if (!list.Contains(GraphicFormat.JsonAnimate)) list.Add(GraphicFormat.JsonAnimate);
                     break;
             }
         }

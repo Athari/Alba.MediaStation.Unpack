@@ -4,7 +4,8 @@ public enum GraphicFormat
 {
     Png,
     Webp,
-    Gif
+    Gif,
+    JsonAnimate
 }
 
 public static class GraphicFormatExtensions
@@ -14,6 +15,7 @@ public static class GraphicFormatExtensions
         GraphicFormat.Png => "png",
         GraphicFormat.Webp => "webp",
         GraphicFormat.Gif => "gif",
+        GraphicFormat.JsonAnimate => "json",
         _ => "png"
     };
 }

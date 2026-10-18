@@ -42,6 +42,8 @@ public class AudioSequence
 
     public byte[] GetPcmBytes() => _accumulatedPcm.ToArray();
 
+    public void AppendPcm(ReadOnlySpan<byte> pcm) => _accumulatedPcm.Write(pcm);
+
     public void SaveAsWav(string filePath)
     {
         if (!HasAudio)

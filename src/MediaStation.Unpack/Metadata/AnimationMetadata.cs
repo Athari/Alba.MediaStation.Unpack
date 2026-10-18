@@ -39,6 +39,10 @@ public class MovieFrame
     public bool KeepAfterEnd { get; set; }
     public uint Index { get; set; }
 
+    public MovieFrame()
+    {
+    }
+
     public MovieFrame(Chunk chunk, bool isFirstGeneration = false)
     {
         if (isFirstGeneration)

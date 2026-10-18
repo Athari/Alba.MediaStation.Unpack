@@ -122,4 +122,42 @@ public class StreamMovieActor : Actor
     {
         Audio.ReadChunk(chunk);
     }
+
+    public void DecompressAllFrames()
+    {
+        if (Frames.Count == 0 || Images.Count == 0)
+            return;
+
+        var imageMap = new Dictionary<uint, PixMapImage>();
+        foreach (var img in Images)
+        {
+            imageMap.TryAdd(img.Index, img.Image);
+        }
+
+        foreach (var frame in Frames)
+        {
+            if (!imageMap.TryGetValue(frame.Index, out var framePixmap))
+                continue;
+
+            if (frame.KeyframeIndex != 0 && imageMap.TryGetValue(frame.KeyframeIndex, out var keyframePixmap))
+            {
+                if (keyframePixmap.IsCompressed)
+                    keyframePixmap.Decompress();
+
+                if (framePixmap.IsCompressed)
+                {
+                    framePixmap.Decompress(
+                        keyframePixmap.Pixels,
+                        keyframePixmap.Width,
+                        keyframePixmap.Height,
+                        frame.DiffBetweenKeyframeAndFrame);
+                }
+            }
+            else
+            {
+                if (framePixmap.IsCompressed)
+                    framePixmap.Decompress();
+            }
+        }
+    }
 }

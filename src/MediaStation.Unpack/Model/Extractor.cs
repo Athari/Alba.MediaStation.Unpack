@@ -76,6 +76,12 @@ public class Extractor
         int movieCount = 0;
         int soundCount = 0;
 
+        bool exportJsonAnimate = (_options.ExtractSprites || _options.ExtractMovies) &&
+            _options.AnimationFormats.Contains(GraphicFormat.JsonAnimate);
+        var rasterAnimFormats = _options.AnimationFormats
+            .Where(f => f != GraphicFormat.JsonAnimate)
+            .ToList();
+
         // 1. Static Images
         if (_options.ExtractImages)
         {
@@ -115,9 +121,9 @@ public class Extractor
         }
 
         // 2. Sprites
-        if (_options.ExtractSprites)
+        if (_options.ExtractSprites && rasterAnimFormats.Count > 0)
         {
-            var formats = _options.AnimationFormats.Count > 0 ? _options.AnimationFormats : [GraphicFormat.Png];
+            var formats = rasterAnimFormats;
             foreach (var sprite in context.Sprites)
             {
                 if (sprite.Frames.Count > 0)
@@ -179,7 +185,7 @@ public class Extractor
         // 3. Movies
         if (_options.ExtractMovies)
         {
-            var formats = _options.AnimationFormats.Count > 0 ? _options.AnimationFormats : [GraphicFormat.Png];
+            var formats = rasterAnimFormats;
             foreach (var movie in context.Movies)
             {
                 string movieName = !string.IsNullOrWhiteSpace(movie.Name)
@@ -189,101 +195,77 @@ public class Extractor
 
                 if (movie.Frames.Count > 0 && movie.Images.Count > 0)
                 {
-                    // Map index to MovieImageData (first image with matching index, per ScummVM)
-                    var imageMap = new Dictionary<uint, PixMapImage>();
-                    foreach (var img in movie.Images)
-                    {
-                        imageMap.TryAdd(img.Index, img.Image);
-                    }
+                    movie.DecompressAllFrames();
 
-                    // Decompress keyframes and delta frames
-                    foreach (var frame in movie.Frames)
+                    if (formats.Count > 0)
                     {
-                        if (!imageMap.TryGetValue(frame.Index, out var framePixmap))
-                            continue;
-
-                        // Check if delta frame
-                        if (frame.KeyframeIndex != 0 && imageMap.TryGetValue(frame.KeyframeIndex, out var keyframePixmap))
+                        // Map index to MovieImageData (first image with matching index, per ScummVM)
+                        var imageMap = new Dictionary<uint, PixMapImage>();
+                        foreach (var img in movie.Images)
                         {
-                            // Ensure keyframe is decompressed
-                            if (keyframePixmap.IsCompressed)
-                                keyframePixmap.Decompress();
+                            imageMap.TryAdd(img.Index, img.Image);
+                        }
 
-                            if (framePixmap.IsCompressed)
+                        var frameItems = new List<MovieFrameItem>();
+                        for (int i = 0; i < movie.Frames.Count; i++)
+                        {
+                            var frame = movie.Frames[i];
+                            if (imageMap.TryGetValue(frame.Index, out var framePixmap))
                             {
-                                framePixmap.Decompress(
-                                    keyframePixmap.Pixels,
-                                    keyframePixmap.Width,
-                                    keyframePixmap.Height,
-                                    frame.DiffBetweenKeyframeAndFrame);
+                                frameItems.Add(new MovieFrameItem
+                                {
+                                    Pixmap = framePixmap,
+                                    Origin = frame.LeftTop,
+                                    StartTimeMs = frame.StartInMilliseconds,
+                                    EndTimeMs = frame.EndInMilliseconds,
+                                    ZIndex = frame.ZIndex,
+                                    Order = i
+                                });
                             }
                         }
-                        else
-                        {
-                            if (framePixmap.IsCompressed)
-                                framePixmap.Decompress();
-                        }
-                    }
 
-                    var frameItems = new List<MovieFrameItem>();
-                    for (int i = 0; i < movie.Frames.Count; i++)
-                    {
-                        var frame = movie.Frames[i];
-                        if (imageMap.TryGetValue(frame.Index, out var framePixmap))
+                        if (frameItems.Count > 0)
                         {
-                            frameItems.Add(new MovieFrameItem
+                            foreach (var format in formats)
                             {
-                                Pixmap = framePixmap,
-                                Origin = frame.LeftTop,
-                                StartTimeMs = frame.StartInMilliseconds,
-                                EndTimeMs = frame.EndInMilliseconds,
-                                ZIndex = frame.ZIndex,
-                                Order = i
-                            });
+                                string moviePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, movie.Id, format.GetExtension(), _logger);
+                                ImageExporter.SaveMovieAnimation(frameItems, palette, moviePath, format);
+                            }
+                            movieCount++;
                         }
-                    }
 
-                    if (frameItems.Count > 0)
-                    {
-                        foreach (var format in formats)
+                        // Check if multiple layers exist
+                        var distinctLayers = movie.Frames.Select(f => f.LayerId).Distinct().ToList();
+                        if (distinctLayers.Count > 1)
                         {
-                            string moviePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, movie.Id, format.GetExtension(), _logger);
-                            ImageExporter.SaveMovieAnimation(frameItems, palette, moviePath, format);
-                        }
-                        movieCount++;
-                    }
-
-                    // Check if multiple layers exist
-                    var distinctLayers = movie.Frames.Select(f => f.LayerId).Distinct().ToList();
-                    if (distinctLayers.Count > 1)
-                    {
-                        foreach (uint layerId in distinctLayers)
-                        {
-                            var layerFrames = new List<MovieFrameItem>();
-                            for (int i = 0; i < movie.Frames.Count; i++)
+                            foreach (uint layerId in distinctLayers)
                             {
-                                var frame = movie.Frames[i];
-                                if (frame.LayerId == layerId && imageMap.TryGetValue(frame.Index, out var framePixmap))
+                                var layerFrames = new List<MovieFrameItem>();
+                                for (int i = 0; i < movie.Frames.Count; i++)
                                 {
-                                    layerFrames.Add(new MovieFrameItem
+                                    var frame = movie.Frames[i];
+                                    if (frame.LayerId == layerId && imageMap.TryGetValue(frame.Index, out var framePixmap))
                                     {
-                                        Pixmap = framePixmap,
-                                        Origin = frame.LeftTop,
-                                        StartTimeMs = frame.StartInMilliseconds,
-                                        EndTimeMs = frame.EndInMilliseconds,
-                                        ZIndex = frame.ZIndex,
-                                        Order = i
-                                    });
+                                        layerFrames.Add(new MovieFrameItem
+                                        {
+                                            Pixmap = framePixmap,
+                                            Origin = frame.LeftTop,
+                                            StartTimeMs = frame.StartInMilliseconds,
+                                            EndTimeMs = frame.EndInMilliseconds,
+                                            ZIndex = frame.ZIndex,
+                                            Order = i
+                                        });
+                                    }
                                 }
-                            }
 
-                            if (layerFrames.Count > 0)
-                            {
-                                string layerBase = $"{baseName}_Layer{layerId}";
-                                foreach (var format in formats)
+                                if (layerFrames.Count > 0)
                                 {
-                                    string layerPath = GetUniqueFilePath(usedPaths, contextOutDir, layerBase, layerId, format.GetExtension(), _logger);
-                                    ImageExporter.SaveMovieAnimation(layerFrames, palette, layerPath, format);
+                                    string layerBase = $"{baseName}_Layer{layerId}";
+                                    foreach (var format in formats)
+                                    {
+                                        string layerPath = GetUniqueFilePath(usedPaths, contextOutDir, layerBase, layerId, format.GetExtension(), _logger);
+                                        ImageExporter.SaveMovieAnimation(layerFrames, palette, layerPath, format);
+                                    }
                                 }
                             }
                         }
@@ -300,7 +282,18 @@ public class Extractor
             }
         }
 
-        // 4. Standalone Sounds
+        // 4. Adobe Animate JSON Export
+        if (exportJsonAnimate)
+        {
+            AnimateJsonExporter.ExportContext(
+                context,
+                palette,
+                contextOutDir,
+                getParamTokenName: _title.GetParamTokenName,
+                logger: _logger);
+        }
+
+        // 5. Standalone Sounds
         if (_options.ExtractAudio)
         {
             foreach (var sound in context.Sounds)
