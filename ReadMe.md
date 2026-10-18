@@ -31,7 +31,7 @@ Build outputs are placed in the root `artifacts/` directory.
 Run the command-line extractor:
 
 ```cmd
-dotnet run --project src/MediaStation.Unpack.Cli -- <path-to-game-or-boot.stm> [options]
+dotnet run --project src/MediaStation.Unpack.Cli -- <path-to-game-boot-or-context-file> [options]
 ```
 
 ### Options
@@ -40,7 +40,6 @@ dotnet run --project src/MediaStation.Unpack.Cli -- <path-to-game-or-boot.stm> [
 |---|---|
 | `-o, --output <dir>` | Destination directory for extracted files. |
 | `-e, --extract <types>` | Asset types to extract: `graphics` (default: images, sprites, movies), `all` (graphics + audio), or comma-separated list (`images`, `sprites`, `movies`, `audio`). |
-| `-c, --context <id>` | Extract assets only from a specific context ID (e.g. `100`). |
 | `-v, --verbose` | Enable detailed progress logging. |
 
 ### Examples
@@ -51,10 +50,10 @@ Extract all graphics from a game disc to an output folder:
 dotnet run --project src/MediaStation.Unpack.Cli -- "D:\" -o "C:\Output\Game"
 ```
 
-Extract graphics and audio from a specific context:
+Extract graphics and audio from a specific context file:
 
 ```cmd
-dotnet run --project src/MediaStation.Unpack.Cli -- "D:\BOOT.STM" -o "C:\Output\Game" -c 174 -e all
+dotnet run --project src/MediaStation.Unpack.Cli -- "D:\DATA\174.CXT" -o "C:\Output\Game" -e all
 ```
 
 ## Acknowledgements

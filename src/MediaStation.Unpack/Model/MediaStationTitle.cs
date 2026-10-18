@@ -16,6 +16,8 @@ public class MediaStationTitle
     public string EngineInfo { get; private set; } = string.Empty;
     public string SourceString { get; private set; } = string.Empty;
 
+    public ushort? TargetContextId { get; private set; }
+
     public Dictionary<ushort, FileInfoRecord> FileMap { get; } = new();
     public Dictionary<ushort, StreamInfoRecord> StreamMap { get; } = new();
     public Dictionary<ushort, ContextReferenceRecord> ContextReferences { get; } = new();
@@ -23,16 +25,32 @@ public class MediaStationTitle
     public Dictionary<ushort, MediaStationContext> Contexts { get; } = new();
     public ProfileMetadata? Profile { get; private set; }
 
-    public MediaStationTitle(string gameDirOrBootFile)
+    private readonly string? _inputContextFile;
+
+    public MediaStationTitle(string gameDirOrFile)
     {
-        if (File.Exists(gameDirOrBootFile))
+        if (File.Exists(gameDirOrFile))
         {
-            BootStmPath = Path.GetFullPath(gameDirOrBootFile);
-            GameDirectory = Path.GetDirectoryName(BootStmPath) ?? Directory.GetCurrentDirectory();
+            string fullPath = Path.GetFullPath(gameDirOrFile);
+            if (Path.GetFileName(fullPath).Equals("BOOT.STM", StringComparison.OrdinalIgnoreCase))
+            {
+                BootStmPath = fullPath;
+                GameDirectory = Path.GetDirectoryName(BootStmPath) ?? Directory.GetCurrentDirectory();
+            }
+            else
+            {
+                _inputContextFile = fullPath;
+                string dir = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();
+                string bootCandidate = Path.Combine(dir, "BOOT.STM");
+                BootStmPath = File.Exists(bootCandidate)
+                    ? bootCandidate
+                    : throw new FileNotFoundException($"Could not find BOOT.STM in '{dir}'.");
+                GameDirectory = dir;
+            }
         }
-        else if (Directory.Exists(gameDirOrBootFile))
+        else if (Directory.Exists(gameDirOrFile))
         {
-            GameDirectory = Path.GetFullPath(gameDirOrBootFile);
+            GameDirectory = Path.GetFullPath(gameDirOrFile);
             string? found = Directory.EnumerateFiles(GameDirectory, "*", SearchOption.TopDirectoryOnly)
                 .FirstOrDefault(f => Path.GetFileName(f).Equals("BOOT.STM", StringComparison.OrdinalIgnoreCase));
 
@@ -47,7 +65,7 @@ public class MediaStationTitle
         }
         else
         {
-            throw new FileNotFoundException($"Path '{gameDirOrBootFile}' does not exist.");
+            throw new FileNotFoundException($"Path '{gameDirOrFile}' does not exist.");
         }
 
         // Set up initial stream map entry for BOOT_STREAM_ID (0)
@@ -79,6 +97,16 @@ public class MediaStationTitle
                 {
                     ReadDocumentDef(chunk);
                 }
+            }
+        }
+
+        if (_inputContextFile != null)
+        {
+            string fileName = Path.GetFileName(_inputContextFile);
+            var file = FileMap.Values.FirstOrDefault(f => f.Name.Equals(fileName, StringComparison.OrdinalIgnoreCase));
+            if (file != null && StreamMap.Values.FirstOrDefault(s => s.FileId == file.Id) is { } stream)
+            {
+                TargetContextId = ContextReferences.Values.FirstOrDefault(c => c.StreamId == stream.ActorId)?.ContextId;
             }
         }
     }

@@ -9,7 +9,7 @@ public static class Program
     {
         var pathArgument = new Argument<string>("path")
         {
-            Description = "Path to the MediaStation game directory or BOOT.STM file"
+            Description = "Path to the MediaStation game directory, BOOT.STM file, or context file (.CXT)"
         };
 
         var outputOption = new Option<string>("--output")
@@ -24,12 +24,6 @@ public static class Program
             Aliases = { "-e" }
         };
 
-        var contextOption = new Option<ushort?>("--context")
-        {
-            Description = "Filter extraction to a specific context ID (e.g. 100)",
-            Aliases = { "-c" }
-        };
-
         var verboseOption = new Option<bool>("--verbose")
         {
             Description = "Enable verbose output logging",
@@ -41,7 +35,6 @@ public static class Program
             pathArgument,
             outputOption,
             extractOption,
-            contextOption,
             verboseOption
         };
 
@@ -50,18 +43,16 @@ public static class Program
             string? path = parseResult.GetValue(pathArgument);
             if (string.IsNullOrWhiteSpace(path))
             {
-                Console.Error.WriteLine("Error: A path to a game directory or BOOT.STM file is required.");
+                Console.Error.WriteLine("Error: A path to a game directory, BOOT.STM file, or context file (.CXT) is required.");
                 return 1;
             }
 
             string output = parseResult.GetValue(outputOption) ?? "extracted";
             string extractStr = parseResult.GetValue(extractOption) ?? "graphics";
-            ushort? contextFilter = parseResult.GetValue(contextOption);
             bool verbose = parseResult.GetValue(verboseOption);
 
             var options = ParseExtractOptions(extractStr);
             options.OutputPath = Path.GetFullPath(output);
-            options.ContextFilter = contextFilter;
             options.Verbose = verbose;
 
             try

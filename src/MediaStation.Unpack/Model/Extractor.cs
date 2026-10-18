@@ -35,12 +35,13 @@ public class Extractor
         Directory.CreateDirectory(_options.OutputPath);
 
         var contextIds = _title.ContextReferences.Keys.OrderBy(k => k).ToList();
-        if (_options.ContextFilter.HasValue)
+        ushort? filter = _options.ContextFilter ?? _title.TargetContextId;
+        if (filter.HasValue)
         {
-            contextIds = contextIds.Where(k => k == _options.ContextFilter.Value).ToList();
+            contextIds = contextIds.Where(k => k == filter.Value).ToList();
             if (contextIds.Count == 0)
             {
-                _logger($"Warning: Context {_options.ContextFilter.Value} was not found in manifest.");
+                _logger($"Warning: Context {filter.Value} was not found in manifest.");
                 return;
             }
         }

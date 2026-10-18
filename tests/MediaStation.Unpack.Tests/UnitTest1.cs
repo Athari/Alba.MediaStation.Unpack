@@ -482,6 +482,93 @@ public class ImageExporterTests
         Assert.Equal(167, fish.G);
         Assert.Equal(15, fish.B);
     }
+
+    [Fact]
+    public void ContextFile_SpecifiedAsInput_ResolvesTargetContextAndMetadata()
+    {
+        string cxtPath = @"Z:\DATA\174.CXT";
+        if (!File.Exists(cxtPath))
+            return;
+
+        var title = new MediaStation.Unpack.Model.MediaStationTitle(cxtPath);
+        Assert.NotNull(title.BootStmPath);
+        Assert.True(File.Exists(title.BootStmPath));
+
+        title.LoadManifest();
+        Assert.Equal((ushort)174, title.TargetContextId);
+        Assert.NotNull(title.Profile);
+        Assert.Equal("101Dalmatian", title.GameTitle);
+
+        string tempDir = Path.Combine(Path.GetTempPath(), "ms_test_cxt_input_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var options = new ExtractOptions
+            {
+                OutputPath = tempDir,
+                ExtractImages = true,
+                ExtractSprites = false,
+                ExtractMovies = false,
+                ExtractAudio = false
+            };
+
+            var extractor = new Extractor(title, options);
+            extractor.Run();
+
+            string contextDir = Path.Combine(tempDir, "Context_174");
+            Assert.True(Directory.Exists(contextDir));
+
+            // Verify human-readable asset file names from PROFILE._ST are detected correctly
+            string namedBonePath = Path.Combine(contextDir, "Image_6c06_Bone.png");
+            Assert.True(File.Exists(namedBonePath));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void BootStm_OrDirectory_SpecifiedAsInput_HasNullTargetContextId()
+    {
+        string bootPath = @"Z:\DATA\BOOT.STM";
+        if (!File.Exists(bootPath))
+            return;
+
+        var titleBoot = new MediaStation.Unpack.Model.MediaStationTitle(bootPath);
+        titleBoot.LoadManifest();
+        Assert.Null(titleBoot.TargetContextId);
+
+        var titleDir = new MediaStation.Unpack.Model.MediaStationTitle(@"Z:\");
+        titleDir.LoadManifest();
+        Assert.Null(titleDir.TargetContextId);
+    }
+
+    [Fact]
+    public void Cli_SpecifyingContextFileDirectly_Succeeds()
+    {
+        string cxtPath = @"Z:\DATA\174.CXT";
+        if (!File.Exists(cxtPath))
+            return;
+
+        string tempDir = Path.Combine(Path.GetTempPath(), "ms_cli_test_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            int exitCode = MediaStation.Unpack.Cli.Program.Main([cxtPath, "-o", tempDir, "-e", "images"]);
+            Assert.Equal(0, exitCode);
+
+            string contextDir = Path.Combine(tempDir, "Context_174");
+            Assert.True(Directory.Exists(contextDir));
+
+            string namedBonePath = Path.Combine(contextDir, "Image_6c06_Bone.png");
+            Assert.True(File.Exists(namedBonePath));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
 }
 
 
