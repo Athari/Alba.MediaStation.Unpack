@@ -6,6 +6,7 @@ using MediaStation.Unpack.Audio;
 using MediaStation.Unpack.Model;
 using MediaStation.Unpack.Actors;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using Xunit;
 
@@ -767,6 +768,89 @@ public class ImageExporterTests
                 Directory.Delete(tempDir, true);
         }
     }
+
+    [Fact]
+    public void CreatePaletteQuantizer_ThrowsWhenColorsExceed256()
+    {
+        // Default palette has 256 distinct grayscale colors (0..255)
+        var palette = new Palette();
+
+        // With transparent: true and transparentIndex: null, adding Color.Transparent results in 257 distinct colors
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            ImageExporter.CreatePaletteQuantizer(palette, transparentIndex: null, transparent: true);
+        });
+
+        Assert.Contains("256", ex.Message);
+    }
+
+    [Fact]
+    public void SaveImage_Png_UsesPaletteColorType()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "ms_test_png_pal_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var palette = new Palette();
+            palette[0] = new Rgba32(0, 0, 0, 0); // Transparent
+            palette[1] = new Rgba32(255, 0, 0, 255); // Red
+
+            byte[] pixels = [1, 1, 0, 1];
+            var pixmap = new PixMapImage(new MediaStation.Unpack.Graphics.ImageInfo(2, 2), pixels, transparentColorIndex: 0);
+
+            string outPath = Path.Combine(tempDir, "image.png");
+            ImageExporter.SaveImage(pixmap, palette, outPath, GraphicFormat.Png);
+
+            Assert.True(File.Exists(outPath));
+            var info = Image.Identify(outPath);
+            var pngMeta = info.Metadata.GetPngMetadata();
+            Assert.Equal(PngColorType.Palette, pngMeta.ColorType);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void SaveSpriteAnimation_Png_UsesPaletteColorType()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "ms_test_apng_pal_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var palette = new Palette();
+            palette[0] = new Rgba32(0, 0, 0, 0);
+            palette[1] = new Rgba32(255, 0, 0, 255);
+            palette[2] = new Rgba32(0, 255, 0, 255);
+
+            byte[] p1 = [1, 1, 1, 1];
+            byte[] p2 = [2, 2, 2, 2];
+            var pix1 = new PixMapImage(new MediaStation.Unpack.Graphics.ImageInfo(2, 2), p1, transparentColorIndex: 0);
+            var pix2 = new PixMapImage(new MediaStation.Unpack.Graphics.ImageInfo(2, 2), p2, transparentColorIndex: 0);
+
+            var frames = new List<(PixMapImage Pixmap, Core.Point Origin)>
+            {
+                (pix1, new Core.Point(0, 0)),
+                (pix2, new Core.Point(0, 0))
+            };
+
+            string outPath = Path.Combine(tempDir, "anim.png");
+            ImageExporter.SaveSpriteAnimation(frames, palette, 10, outPath, GraphicFormat.Png);
+
+            Assert.True(File.Exists(outPath));
+            var info = Image.Identify(outPath);
+            var pngMeta = info.Metadata.GetPngMetadata();
+            Assert.Equal(PngColorType.Palette, pngMeta.ColorType);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
 }
+
 
 

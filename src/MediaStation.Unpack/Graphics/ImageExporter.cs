@@ -312,7 +312,12 @@ public static class ImageExporter
             }
         }
 
-        var colorArray = distinctColors.Take(256).ToArray();
+        if (distinctColors.Count > 256)
+        {
+            throw new InvalidOperationException($"Palette contains {distinctColors.Count} distinct colors, exceeding the 256 color limit.");
+        }
+
+        var colorArray = distinctColors.ToArray();
         return new PaletteQuantizer(
             colorArray,
             new QuantizerOptions
@@ -327,7 +332,8 @@ public static class ImageExporter
         switch (format)
         {
             case GraphicFormat.Png:
-                image.SaveAsPng(filePath);
+                var pngQuantizer = CreatePaletteQuantizer(palette, transparentIndex, transparent: transparentIndex.HasValue);
+                image.SaveAsPng(filePath, new PngEncoder { ColorType = PngColorType.Palette, Quantizer = pngQuantizer });
                 break;
 
             case GraphicFormat.Webp:
@@ -335,8 +341,8 @@ public static class ImageExporter
                 break;
 
             case GraphicFormat.Gif:
-                var quantizer = CreatePaletteQuantizer(palette, transparentIndex, transparent: transparentIndex.HasValue);
-                image.SaveAsGif(filePath, new GifEncoder { Quantizer = quantizer });
+                var gifQuantizer = CreatePaletteQuantizer(palette, transparentIndex, transparent: transparentIndex.HasValue);
+                image.SaveAsGif(filePath, new GifEncoder { Quantizer = gifQuantizer });
                 break;
         }
     }
@@ -375,7 +381,8 @@ public static class ImageExporter
                 var pngMeta = masterImage.Metadata.GetPngMetadata();
                 pngMeta.RepeatCount = 0;
                 pngMeta.AnimateRootFrame = true;
-                masterImage.SaveAsPng(filePath);
+                var pngQuantizer = CreatePaletteQuantizer(palette, transparentIndex: 0, transparent: true);
+                masterImage.SaveAsPng(filePath, new PngEncoder { ColorType = PngColorType.Palette, Quantizer = pngQuantizer });
                 break;
 
             case GraphicFormat.Webp:
@@ -387,8 +394,8 @@ public static class ImageExporter
             case GraphicFormat.Gif:
                 var gifMeta = masterImage.Metadata.GetGifMetadata();
                 gifMeta.RepeatCount = 0;
-                var quantizer = CreatePaletteQuantizer(palette, transparentIndex: 0, transparent: true);
-                masterImage.SaveAsGif(filePath, new GifEncoder { Quantizer = quantizer });
+                var gifQuantizer = CreatePaletteQuantizer(palette, transparentIndex: 0, transparent: true);
+                masterImage.SaveAsGif(filePath, new GifEncoder { Quantizer = gifQuantizer });
                 break;
         }
     }
