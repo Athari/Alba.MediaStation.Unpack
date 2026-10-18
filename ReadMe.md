@@ -6,9 +6,9 @@ The format parsing and decompression algorithms are implemented with reference t
 
 ## Features
 
-- **Images**: Extracts 8-bit indexed bitmaps to PNG with palette mapping and transparency.
-- **Sprites**: Exports multi-frame sprite sequences and named sub-clips to Animated PNG (APNG).
-- **Movies**: Decompresses keyframes and delta frames, assembling multi-layer stream animations into APNG files with accurate frame durations.
+- **Images**: Extracts 8-bit indexed bitmaps to PNG, WebP (lossless), and GIF with exact palette mapping and transparency.
+- **Sprites**: Exports multi-frame sprite sequences and named sub-clips to Animated PNG (APNG), Animated WebP, and Animated GIF.
+- **Movies**: Decompresses keyframes and delta frames, assembling multi-layer stream animations into APNG, WebP, and GIF files with accurate frame durations.
 - **Audio**: Decodes IMA ADPCM audio streams and exports concatenated standard WAV files.
 - **Asset Naming**: Maps numeric asset identifiers to human-readable names using profile metadata when present.
 
@@ -40,6 +40,8 @@ dotnet run --project src/MediaStation.Unpack.Cli -- <path-to-game-boot-or-contex
 |---|---|
 | `-o, --output <dir>` | Destination directory for extracted files. |
 | `-e, --extract <types>` | Asset types to extract: `graphics` (default: images, sprites, movies), `all` (graphics + audio), or comma-separated list (`images`, `sprites`, `movies`, `audio`). |
+| `-if, --image-format <formats>` | Static image formats: comma-separated list (`png`, `webp`, `gif`). Default: `png`. (WebP is always lossless; GIF preserves exact 8-bit palette). |
+| `-af, --animation-format <formats>` | Animation formats for sprites and movies: comma-separated list (`png`, `webp`, `gif`). Default: `png`. |
 | `-v, --verbose` | Enable detailed progress logging. |
 
 ### Examples
@@ -48,6 +50,12 @@ Extract all graphics from a game disc to an output folder:
 
 ```cmd
 dotnet run --project src/MediaStation.Unpack.Cli -- "D:\" -o "C:\Output\Game"
+```
+
+Extract animations as both GIF and APNG:
+
+```cmd
+dotnet run --project src/MediaStation.Unpack.Cli -- "D:\" -o "C:\Output\Game" -af gif,png
 ```
 
 Extract graphics and audio from a specific context file:

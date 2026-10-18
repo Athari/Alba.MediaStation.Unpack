@@ -14,6 +14,8 @@ public class ExtractOptions
     public bool ExtractAudio { get; set; } = false;
     public ushort? ContextFilter { get; set; }
     public bool Verbose { get; set; }
+    public List<GraphicFormat> ImageFormats { get; set; } = [GraphicFormat.Png];
+    public List<GraphicFormat> AnimationFormats { get; set; } = [GraphicFormat.Png];
 }
 
 public class Extractor
@@ -77,6 +79,7 @@ public class Extractor
         // 1. Static Images
         if (_options.ExtractImages)
         {
+            var formats = _options.ImageFormats.Count > 0 ? _options.ImageFormats : [GraphicFormat.Png];
             foreach (var imgActor in context.Images)
             {
                 if (imgActor.Bitmap != null)
@@ -84,8 +87,11 @@ public class Extractor
                     string baseName = !string.IsNullOrWhiteSpace(imgActor.Name)
                         ? $"Image_{CleanAssetName(imgActor.Name, ImagePrefixes)}"
                         : $"Image_{imgActor.Id}";
-                    string filePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, imgActor.Id, "png", _logger);
-                    ImageExporter.SaveImage(imgActor.Bitmap, palette, filePath);
+                    foreach (var format in formats)
+                    {
+                        string filePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, imgActor.Id, format.GetExtension(), _logger);
+                        ImageExporter.SaveImage(imgActor.Bitmap, palette, filePath, format);
+                    }
                     imageCount++;
                 }
             }
@@ -98,8 +104,11 @@ public class Extractor
                     string baseName = !string.IsNullOrWhiteSpace(diskImg.Name)
                         ? $"Image_{CleanAssetName(diskImg.Name, ImagePrefixes)}"
                         : $"DiskImage_{diskImg.Id}";
-                    string filePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, diskImg.Id, "png", _logger);
-                    ImageExporter.SaveImage(composite, palette, filePath);
+                    foreach (var format in formats)
+                    {
+                        string filePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, diskImg.Id, format.GetExtension(), _logger);
+                        ImageExporter.SaveImage(composite, palette, filePath, format);
+                    }
                     imageCount++;
                 }
             }
@@ -108,6 +117,7 @@ public class Extractor
         // 2. Sprites
         if (_options.ExtractSprites)
         {
+            var formats = _options.AnimationFormats.Count > 0 ? _options.AnimationFormats : [GraphicFormat.Png];
             foreach (var sprite in context.Sprites)
             {
                 if (sprite.Frames.Count > 0)
@@ -119,8 +129,11 @@ public class Extractor
                     // Save master animation (all frames)
                     var masterFrames = sprite.Frames.Select(f => (f.Pixmap, f.Origin)).ToList();
                     string masterBase = $"Sprite_{spriteName}";
-                    string masterPath = GetUniqueFilePath(usedPaths, contextOutDir, masterBase, sprite.Id, "png", _logger);
-                    ImageExporter.SaveSpriteApng(masterFrames, palette, (int)sprite.FrameRate, masterPath);
+                    foreach (var format in formats)
+                    {
+                        string masterPath = GetUniqueFilePath(usedPaths, contextOutDir, masterBase, sprite.Id, format.GetExtension(), _logger);
+                        ImageExporter.SaveSpriteAnimation(masterFrames, palette, (int)sprite.FrameRate, masterPath, format);
+                    }
                     spriteCount++;
 
                     // Save custom sub-clips if any
@@ -152,8 +165,11 @@ public class Extractor
                                 : $"Clip{clip.Id:X}";
 
                             string clipBase = $"Sprite_{spriteName}_{clipName}";
-                            string clipPath = GetUniqueFilePath(usedPaths, contextOutDir, clipBase, clip.Id, "png", _logger);
-                            ImageExporter.SaveSpriteApng(clipFrames, palette, (int)sprite.FrameRate, clipPath);
+                            foreach (var format in formats)
+                            {
+                                string clipPath = GetUniqueFilePath(usedPaths, contextOutDir, clipBase, clip.Id, format.GetExtension(), _logger);
+                                ImageExporter.SaveSpriteAnimation(clipFrames, palette, (int)sprite.FrameRate, clipPath, format);
+                            }
                         }
                     }
                 }
@@ -163,6 +179,7 @@ public class Extractor
         // 3. Movies
         if (_options.ExtractMovies)
         {
+            var formats = _options.AnimationFormats.Count > 0 ? _options.AnimationFormats : [GraphicFormat.Png];
             foreach (var movie in context.Movies)
             {
                 string movieName = !string.IsNullOrWhiteSpace(movie.Name)
@@ -228,8 +245,11 @@ public class Extractor
 
                     if (frameItems.Count > 0)
                     {
-                        string moviePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, movie.Id, "png", _logger);
-                        ImageExporter.SaveMovieApng(frameItems, palette, moviePath);
+                        foreach (var format in formats)
+                        {
+                            string moviePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, movie.Id, format.GetExtension(), _logger);
+                            ImageExporter.SaveMovieAnimation(frameItems, palette, moviePath, format);
+                        }
                         movieCount++;
                     }
 
@@ -260,8 +280,11 @@ public class Extractor
                             if (layerFrames.Count > 0)
                             {
                                 string layerBase = $"{baseName}_Layer{layerId}";
-                                string layerPath = GetUniqueFilePath(usedPaths, contextOutDir, layerBase, layerId, "png", _logger);
-                                ImageExporter.SaveMovieApng(layerFrames, palette, layerPath);
+                                foreach (var format in formats)
+                                {
+                                    string layerPath = GetUniqueFilePath(usedPaths, contextOutDir, layerBase, layerId, format.GetExtension(), _logger);
+                                    ImageExporter.SaveMovieAnimation(layerFrames, palette, layerPath, format);
+                                }
                             }
                         }
                     }

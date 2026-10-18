@@ -312,6 +312,172 @@ public class ImageExporterTests
     }
 
     [Fact]
+    public void ImageExporter_ExportsStaticWebpAndGifCorrectly()
+    {
+        byte[] rgb = new byte[256 * 3];
+        rgb[3] = 0; rgb[4] = 200; rgb[5] = 100; // Color 1
+        var palette = new Palette(rgb);
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "ms_test_webp_gif_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            byte[] rawPixels = new byte[8 * 8];
+            Array.Fill(rawPixels, (byte)1);
+            rawPixels[0] = 0; // Transparent pixel
+            var info = new MediaStation.Unpack.Graphics.ImageInfo(8, 8);
+            var pixmap = new PixMapImage(info, rawPixels, transparentColorIndex: 0);
+
+            // 1. WebP
+            string webpPath = Path.Combine(tempDir, "test.webp");
+            ImageExporter.SaveImage(pixmap, palette, webpPath, GraphicFormat.Webp);
+            Assert.True(File.Exists(webpPath));
+            using (var loadedWebp = Image.Load<Rgba32>(webpPath))
+            {
+                Assert.Equal(8, loadedWebp.Width);
+                Assert.Equal(8, loadedWebp.Height);
+                Assert.Equal(0, loadedWebp[0, 0].A); // Transparent
+                Assert.Equal(200, loadedWebp[1, 0].G);
+                Assert.Equal(100, loadedWebp[1, 0].B);
+                Assert.Equal(255, loadedWebp[1, 0].A);
+            }
+
+            // 2. GIF
+            string gifPath = Path.Combine(tempDir, "test.gif");
+            ImageExporter.SaveImage(pixmap, palette, gifPath, GraphicFormat.Gif);
+            Assert.True(File.Exists(gifPath));
+            using (var loadedGif = Image.Load<Rgba32>(gifPath))
+            {
+                Assert.Equal(8, loadedGif.Width);
+                Assert.Equal(8, loadedGif.Height);
+                Assert.Equal(0, loadedGif[0, 0].A); // Transparent
+                Assert.Equal(200, loadedGif[1, 0].G);
+                Assert.Equal(100, loadedGif[1, 0].B);
+                Assert.Equal(255, loadedGif[1, 0].A);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void ImageExporter_ExportsSpriteAnimationWebpAndGifCorrectly()
+    {
+        byte[] rgb = new byte[256 * 3];
+        rgb[3] = 10; rgb[4] = 20; rgb[5] = 30; // Color 1
+        rgb[6] = 40; rgb[7] = 50; rgb[8] = 60; // Color 2
+        var palette = new Palette(rgb);
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "ms_test_anim_wg_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            byte[] p1 = new byte[4 * 4];
+            Array.Fill(p1, (byte)1);
+            var pix1 = new PixMapImage(new MediaStation.Unpack.Graphics.ImageInfo(4, 4), p1, transparentColorIndex: 0);
+
+            byte[] p2 = new byte[4 * 4];
+            Array.Fill(p2, (byte)2);
+            var pix2 = new PixMapImage(new MediaStation.Unpack.Graphics.ImageInfo(4, 4), p2, transparentColorIndex: 0);
+
+            var frames = new List<(PixMapImage Pixmap, Core.Point Origin)>
+            {
+                (pix1, new Core.Point(0, 0)),
+                (pix2, new Core.Point(2, 2))
+            };
+
+            // 1. WebP animation
+            string webpPath = Path.Combine(tempDir, "anim.webp");
+            ImageExporter.SaveSpriteAnimation(frames, palette, frameRate: 10, webpPath, GraphicFormat.Webp);
+            Assert.True(File.Exists(webpPath));
+            using (var loadedWebp = Image.Load<Rgba32>(webpPath))
+            {
+                Assert.Equal(2, loadedWebp.Frames.Count);
+                Assert.Equal(6, loadedWebp.Width);
+                Assert.Equal(6, loadedWebp.Height);
+            }
+
+            // 2. GIF animation
+            string gifPath = Path.Combine(tempDir, "anim.gif");
+            ImageExporter.SaveSpriteAnimation(frames, palette, frameRate: 10, gifPath, GraphicFormat.Gif);
+            Assert.True(File.Exists(gifPath));
+            using (var loadedGif = Image.Load<Rgba32>(gifPath))
+            {
+                Assert.Equal(2, loadedGif.Frames.Count);
+                Assert.Equal(6, loadedGif.Width);
+                Assert.Equal(6, loadedGif.Height);
+                // Verify delay is clamped/rounded (100 / 10 = 10 centiseconds)
+                var rootMeta = loadedGif.Frames.RootFrame.Metadata.GetGifMetadata();
+                Assert.Equal(10, rootMeta.FrameDelay);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void ImageExporter_ExportsMovieAnimationWebpAndGifCorrectly()
+    {
+        byte[] rgb = new byte[256 * 3];
+        rgb[3] = 255; // Color 1 = Red
+        rgb[7] = 255; // Color 2 = Green
+        var palette = new Palette(rgb);
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "ms_test_mov_wg_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            byte[] p1 = new byte[4 * 4];
+            Array.Fill(p1, (byte)1);
+            var pix1 = new PixMapImage(new MediaStation.Unpack.Graphics.ImageInfo(4, 4), p1, transparentColorIndex: 0);
+
+            byte[] p2 = new byte[4 * 4];
+            Array.Fill(p2, (byte)2);
+            var pix2 = new PixMapImage(new MediaStation.Unpack.Graphics.ImageInfo(4, 4), p2, transparentColorIndex: 0);
+
+            var items = new List<MovieFrameItem>
+            {
+                new() { Pixmap = pix1, Origin = new Core.Point(0, 0), StartTimeMs = 0, EndTimeMs = 50, ZIndex = 0, Order = 0 },
+                new() { Pixmap = pix2, Origin = new Core.Point(2, 0), StartTimeMs = 50, EndTimeMs = 100, ZIndex = 0, Order = 1 }
+            };
+
+            // WebP
+            string webpPath = Path.Combine(tempDir, "movie.webp");
+            ImageExporter.SaveMovieAnimation(items, palette, webpPath, GraphicFormat.Webp);
+            Assert.True(File.Exists(webpPath));
+            using (var imgWebp = Image.Load<Rgba32>(webpPath))
+            {
+                Assert.Equal(2, imgWebp.Frames.Count);
+                Assert.Equal(6, imgWebp.Width);
+            }
+
+            // GIF
+            string gifPath = Path.Combine(tempDir, "movie.gif");
+            ImageExporter.SaveMovieAnimation(items, palette, gifPath, GraphicFormat.Gif);
+            Assert.True(File.Exists(gifPath));
+            using (var imgGif = Image.Load<Rgba32>(gifPath))
+            {
+                Assert.Equal(2, imgGif.Frames.Count);
+                Assert.Equal(6, imgGif.Width);
+                var meta = imgGif.Frames.RootFrame.Metadata.GetGifMetadata();
+                // 50ms / 10 = 5 centiseconds
+                Assert.Equal(5, meta.FrameDelay);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
     public void ProfileMetadata_LoadsFromDiscIfAvailable()
     {
         string profilePath = @"Z:\DATA\PROFILE._ST";
@@ -562,6 +728,38 @@ public class ImageExporterTests
 
             string namedBonePath = Path.Combine(contextDir, "Image_6c06_Bone.png");
             Assert.True(File.Exists(namedBonePath));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void Cli_FormatOptions_ExportsSelectedFormats()
+    {
+        string cxtPath = @"Z:\DATA\174.CXT";
+        if (!File.Exists(cxtPath))
+            return;
+
+        string tempDir = Path.Combine(Path.GetTempPath(), "ms_cli_fmt_test_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            int exitCode = MediaStation.Unpack.Cli.Program.Main([cxtPath, "-o", tempDir, "-e", "images", "-if", "png,webp,gif"]);
+            Assert.Equal(0, exitCode);
+
+            string contextDir = Path.Combine(tempDir, "Context_174");
+            Assert.True(Directory.Exists(contextDir));
+
+            // Verify that all 3 formats were exported for Bone
+            string pngBone = Path.Combine(contextDir, "Image_6c06_Bone.png");
+            string webpBone = Path.Combine(contextDir, "Image_6c06_Bone.webp");
+            string gifBone = Path.Combine(contextDir, "Image_6c06_Bone.gif");
+
+            Assert.True(File.Exists(pngBone), "PNG file should exist");
+            Assert.True(File.Exists(webpBone), "WebP file should exist");
+            Assert.True(File.Exists(gifBone), "GIF file should exist");
         }
         finally
         {

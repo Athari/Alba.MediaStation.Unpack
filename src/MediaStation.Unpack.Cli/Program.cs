@@ -1,4 +1,5 @@
 using System.CommandLine;
+using MediaStation.Unpack.Graphics;
 using MediaStation.Unpack.Model;
 
 namespace MediaStation.Unpack.Cli;
@@ -24,17 +25,31 @@ public static class Program
             Aliases = { "-e" }
         };
 
+        var imageFormatOption = new Option<string>("--image-format")
+        {
+            Description = "Static image formats: comma-separated list ('png', 'webp', 'gif'). Default: png",
+            Aliases = { "-if" }
+        };
+
+        var animationFormatOption = new Option<string>("--animation-format")
+        {
+            Description = "Animation formats: comma-separated list ('png', 'webp', 'gif'). Default: png",
+            Aliases = { "-af" }
+        };
+
         var verboseOption = new Option<bool>("--verbose")
         {
             Description = "Enable verbose output logging",
             Aliases = { "-v" }
         };
 
-        var rootCommand = new RootCommand("Extracts graphics (PNG/APNG) and audio (WAV) from MediaStation game archives (.STM, .CXT)")
+        var rootCommand = new RootCommand("Extracts graphics (PNG/APNG/WebP/GIF) and audio (WAV) from MediaStation game archives (.STM, .CXT)")
         {
             pathArgument,
             outputOption,
             extractOption,
+            imageFormatOption,
+            animationFormatOption,
             verboseOption
         };
 
@@ -49,11 +64,15 @@ public static class Program
 
             string output = parseResult.GetValue(outputOption) ?? "extracted";
             string extractStr = parseResult.GetValue(extractOption) ?? "graphics";
+            string imageFormatStr = parseResult.GetValue(imageFormatOption) ?? "png";
+            string animFormatStr = parseResult.GetValue(animationFormatOption) ?? "png";
             bool verbose = parseResult.GetValue(verboseOption);
 
             var options = ParseExtractOptions(extractStr);
             options.OutputPath = Path.GetFullPath(output);
             options.Verbose = verbose;
+            options.ImageFormats = ParseFormats(imageFormatStr);
+            options.AnimationFormats = ParseFormats(animFormatStr);
 
             try
             {
@@ -77,6 +96,28 @@ public static class Program
 
         var result = rootCommand.Parse(args);
         return result.Invoke();
+    }
+
+    private static List<GraphicFormat> ParseFormats(string formatStr)
+    {
+        var list = new List<GraphicFormat>();
+        var parts = formatStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var part in parts)
+        {
+            switch (part.ToLowerInvariant())
+            {
+                case "png" or "apng":
+                    if (!list.Contains(GraphicFormat.Png)) list.Add(GraphicFormat.Png);
+                    break;
+                case "webp":
+                    if (!list.Contains(GraphicFormat.Webp)) list.Add(GraphicFormat.Webp);
+                    break;
+                case "gif":
+                    if (!list.Contains(GraphicFormat.Gif)) list.Add(GraphicFormat.Gif);
+                    break;
+            }
+        }
+        return list.Count > 0 ? list : [GraphicFormat.Png];
     }
 
     private static ExtractOptions ParseExtractOptions(string extractStr)
