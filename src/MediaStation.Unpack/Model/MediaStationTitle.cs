@@ -15,6 +15,7 @@ public class MediaStationTitle
     public VersionInfo Version { get; private set; }
     public string EngineInfo { get; private set; } = string.Empty;
     public string SourceString { get; private set; } = string.Empty;
+    public bool IsFirstGeneration => Version.Major == 0;
 
     public ushort? TargetContextId { get; private set; }
 
@@ -109,6 +110,8 @@ public class MediaStationTitle
                 TargetContextId = ContextReferences.Values.FirstOrDefault(c => c.StreamId == stream.ActorId)?.ContextId;
             }
         }
+
+        DetectGameTitle();
     }
 
     private void ReadDocumentDef(Chunk chunk)
@@ -563,14 +566,14 @@ public class MediaStationTitle
         }
     }
 
-    private static Actor CreateActor(ActorType type)
+    private Actor CreateActor(ActorType type)
     {
         return type switch
         {
             ActorType.Image => new ImageActor(),
             ActorType.DiskImage => new DiskImageActor(),
             ActorType.Sprite => new SpriteMovieActor(),
-            ActorType.Movie => new StreamMovieActor(),
+            ActorType.Movie => new StreamMovieActor { IsFirstGeneration = IsFirstGeneration },
             ActorType.Sound => new SoundActor(),
             ActorType.Palette => new PaletteActor(),
             _ => new Actor(type),
@@ -598,6 +601,87 @@ public class MediaStationTitle
         catch
         {
             return null;
+        }
+    }
+
+    private static readonly Dictionary<string, string> KnownGameExecutables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["LIONKING.EXE"] = "The Lion King",
+        ["MOUSECKE.EXE"] = "If You Give a Mouse a Cookie",
+        ["HAUNTED.EXE"] = "Jan Pieńkowski Haunted House",
+        ["LCMUSIC.EXE"] = "Lamb Chop Loves Music",
+        ["FPRINCE.EXE"] = "Fractured Fairy Tales: The Frog Prince",
+        ["WPHTASB.EXE"] = "Winnie the Pooh and the Honey Tree",
+        ["HB_ASB.EXE"] = "The Hunchback of Notre Dame",
+        ["PZCASTLE.EXE"] = "Jan Pieńkowski Haunted House: Puzzle Castle",
+        ["101_ASB.EXE"] = "101 Dalmatians",
+        ["HERC_ASB.EXE"] = "Hercules",
+        ["POCA_ASB.EXE"] = "Pocahontas",
+        ["RAPUNZEL.EXE"] = "Fractured Fairy Tales: Rapunzel",
+        ["TONKA_SR.EXE"] = "Tonka Search & Rescue",
+        ["ARIEL_SS.EXE"] = "The Little Mermaid",
+        ["MERMAID.EXE"] = "The Little Mermaid",
+        ["TONKA_GR.EXE"] = "Tonka Garage",
+        ["TONKA_W.EXE"] = "Tonka Workshop",
+        ["TONKA_RACEWAY.EXE"] = "Tonka Raceway",
+        ["STUARTCD.EXE"] = "Stuart Little: His Adventures in Numberland",
+    };
+
+    private void DetectGameTitle()
+    {
+        if (!string.IsNullOrEmpty(GameTitle))
+            return;
+
+        var candidateDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(GameDirectory) && Directory.Exists(GameDirectory))
+        {
+            candidateDirs.Add(GameDirectory);
+            string? parent = Path.GetDirectoryName(GameDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
+                candidateDirs.Add(parent);
+        }
+
+        foreach (var dir in candidateDirs)
+        {
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(dir, "*.EXE"))
+                {
+                    string fileName = Path.GetFileName(file);
+                    if (KnownGameExecutables.TryGetValue(fileName, out var knownTitle))
+                    {
+                        GameTitle = knownTitle;
+                        return;
+                    }
+
+                    try
+                    {
+                        var fileVersionInfo = System.Diagnostics.FileVersionInfo.GetVersionInfo(file);
+                        if (!string.IsNullOrWhiteSpace(fileVersionInfo.ProductName) &&
+                            !fileVersionInfo.ProductName.Contains("Media Station", StringComparison.OrdinalIgnoreCase) &&
+                            !fileVersionInfo.ProductName.Contains("Install", StringComparison.OrdinalIgnoreCase) &&
+                            !fileVersionInfo.ProductName.Contains("Setup", StringComparison.OrdinalIgnoreCase))
+                        {
+                            GameTitle = fileVersionInfo.ProductName.Trim();
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore PE parsing errors
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore directory enumeration errors
+            }
+        }
+
+        string dirName = Path.GetFileName(GameDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (!string.IsNullOrEmpty(dirName) && !dirName.Equals("DATA", StringComparison.OrdinalIgnoreCase))
+        {
+            GameTitle = dirName;
         }
     }
 }

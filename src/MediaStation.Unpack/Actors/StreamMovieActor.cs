@@ -32,6 +32,7 @@ public class StreamMovieActor : Actor
     public uint AudioChannelIdent { get; set; }
     public double FrameRate { get; set; }
     public uint ChunkCount { get; set; }
+    public bool IsFirstGeneration { get; set; }
 
     public AudioSequence Audio { get; } = new();
     public List<MovieImageData> Images { get; } = new();
@@ -113,7 +114,7 @@ public class StreamMovieActor : Actor
         uint frameCount = chunk.ReadTypedUint16();
         for (uint i = 0; i < frameCount; i++)
         {
-            var frame = new MovieFrame(chunk, isFirstGeneration: false);
+            var frame = new MovieFrame(chunk, IsFirstGeneration);
             Frames.Add(frame);
         }
     }
