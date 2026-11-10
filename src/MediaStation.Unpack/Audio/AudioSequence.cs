@@ -44,13 +44,29 @@ public class AudioSequence
 
     public void AppendPcm(ReadOnlySpan<byte> pcm) => _accumulatedPcm.Write(pcm);
 
-    public void SaveAsWav(string filePath)
+    public void WriteWav(Stream output)
     {
         if (!HasAudio)
             return;
 
         int rate = SampleRate > 0 ? (int)SampleRate : 22050;
         int channels = ChannelCount > 0 ? ChannelCount : 1;
-        WavWriter.SavePcmWav(filePath, _accumulatedPcm.ToArray(), rate, channels, bitsPerSample: 16);
+        ReadOnlySpan<byte> pcmSpan = _accumulatedPcm.TryGetBuffer(out var buf)
+            ? buf.AsSpan(0, (int)_accumulatedPcm.Length)
+            : _accumulatedPcm.ToArray();
+        WavWriter.WritePcmWav(output, pcmSpan, rate, channels, bitsPerSample: 16);
+    }
+
+    public void SaveAsWav(string filePath)
+    {
+        if (!HasAudio)
+            return;
+
+        string? dir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+
+        using var fs = File.Create(filePath);
+        WriteWav(fs);
     }
 }

@@ -41,6 +41,15 @@ public static class ImageExporter
         return image;
     }
 
+    public static void SaveImage(PixMapImage pixmap, Palette palette, Stream stream, GraphicFormat format = GraphicFormat.Png)
+    {
+        if (pixmap.Width <= 0 || pixmap.Height <= 0)
+            return;
+
+        using var image = CreateRgbaImage(pixmap, palette);
+        SaveImageStream(image, palette, pixmap.TransparentColorIndex, stream, format);
+    }
+
     public static void SaveImage(PixMapImage pixmap, Palette palette, string filePath, GraphicFormat format = GraphicFormat.Png)
     {
         if (pixmap.Width <= 0 || pixmap.Height <= 0)
@@ -50,8 +59,8 @@ public static class ImageExporter
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
-        using var image = CreateRgbaImage(pixmap, palette);
-        SaveImageFile(image, palette, pixmap.TransparentColorIndex, filePath, format);
+        using var fs = File.Create(filePath);
+        SaveImage(pixmap, palette, fs, format);
     }
 
     public static void SaveSpriteApng(
@@ -77,9 +86,23 @@ public static class ImageExporter
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
+        using var fs = File.Create(filePath);
+        SaveSpriteAnimation(frames, palette, frameRate, fs, format);
+    }
+
+    public static void SaveSpriteAnimation(
+        IReadOnlyList<(PixMapImage Pixmap, MsPoint Origin)> frames,
+        Palette palette,
+        int frameRate,
+        Stream stream,
+        GraphicFormat format = GraphicFormat.Png)
+    {
+        if (frames.Count == 0)
+            return;
+
         if (frames.Count == 1)
         {
-            SaveImage(frames[0].Pixmap, palette, filePath, format);
+            SaveImage(frames[0].Pixmap, palette, stream, format);
             return;
         }
 
@@ -132,7 +155,7 @@ public static class ImageExporter
             }
         }
 
-        SaveAnimationMaster(masterImage, palette, filePath, format);
+        SaveAnimationMaster(masterImage, palette, stream, format);
     }
 
     public static void SaveMovieApng(
@@ -152,16 +175,29 @@ public static class ImageExporter
         if (frames.Count == 0)
             return;
 
+        string? dir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+
+        using var fs = File.Create(filePath);
+        SaveMovieAnimation(frames, palette, fs, format);
+    }
+
+    public static void SaveMovieAnimation(
+        IReadOnlyList<MovieFrameItem> frames,
+        Palette palette,
+        Stream stream,
+        GraphicFormat format = GraphicFormat.Png)
+    {
+        if (frames.Count == 0)
+            return;
+
         var visibleFrames = frames
             .Where(f => f.Pixmap.Width > 0 && f.Pixmap.Height > 0 && f.EndTimeMs > f.StartTimeMs)
             .ToList();
 
         if (visibleFrames.Count == 0)
             return;
-
-        string? dir = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(dir))
-            Directory.CreateDirectory(dir);
 
         int minX = int.MaxValue;
         int minY = int.MaxValue;
@@ -237,7 +273,7 @@ public static class ImageExporter
                 int destY = frameItem.Origin.Y - minY;
                 singleImage.Mutate(ctx => ctx.DrawImage(frameRgba, new SixLabors.ImageSharp.Point(destX, destY), 1f));
             }
-            SaveImageFile(singleImage, palette, transparentIndex: null, filePath, format);
+            SaveImageStream(singleImage, palette, transparentIndex: null, stream, format);
             return;
         }
 
@@ -280,7 +316,7 @@ public static class ImageExporter
                 }
             }
 
-            SaveAnimationMaster(masterImage, palette, filePath, format);
+            SaveAnimationMaster(masterImage, palette, stream, format);
         }
         finally
         {
@@ -327,22 +363,22 @@ public static class ImageExporter
             });
     }
 
-    private static void SaveImageFile(Image<Rgba32> image, Palette palette, byte? transparentIndex, string filePath, GraphicFormat format)
+    private static void SaveImageStream(Image<Rgba32> image, Palette palette, byte? transparentIndex, Stream stream, GraphicFormat format)
     {
         switch (format)
         {
             case GraphicFormat.Png:
                 var pngQuantizer = CreatePaletteQuantizer(palette, transparentIndex, transparent: transparentIndex.HasValue);
-                image.SaveAsPng(filePath, new PngEncoder { ColorType = PngColorType.Palette, Quantizer = pngQuantizer });
+                image.SaveAsPng(stream, new PngEncoder { ColorType = PngColorType.Palette, Quantizer = pngQuantizer });
                 break;
 
             case GraphicFormat.Webp:
-                image.SaveAsWebp(filePath, new WebpEncoder { FileFormat = WebpFileFormatType.Lossless });
+                image.SaveAsWebp(stream, new WebpEncoder { FileFormat = WebpFileFormatType.Lossless });
                 break;
 
             case GraphicFormat.Gif:
                 var gifQuantizer = CreatePaletteQuantizer(palette, transparentIndex, transparent: transparentIndex.HasValue);
-                image.SaveAsGif(filePath, new GifEncoder { Quantizer = gifQuantizer });
+                image.SaveAsGif(stream, new GifEncoder { Quantizer = gifQuantizer });
                 break;
         }
     }
@@ -373,7 +409,7 @@ public static class ImageExporter
         }
     }
 
-    private static void SaveAnimationMaster(Image<Rgba32> masterImage, Palette palette, string filePath, GraphicFormat format)
+    private static void SaveAnimationMaster(Image<Rgba32> masterImage, Palette palette, Stream stream, GraphicFormat format)
     {
         switch (format)
         {
@@ -382,20 +418,20 @@ public static class ImageExporter
                 pngMeta.RepeatCount = 0;
                 pngMeta.AnimateRootFrame = true;
                 var pngQuantizer = CreatePaletteQuantizer(palette, transparentIndex: 0, transparent: true);
-                masterImage.SaveAsPng(filePath, new PngEncoder { ColorType = PngColorType.Palette, Quantizer = pngQuantizer });
+                masterImage.SaveAsPng(stream, new PngEncoder { ColorType = PngColorType.Palette, Quantizer = pngQuantizer });
                 break;
 
             case GraphicFormat.Webp:
                 var webpMeta = masterImage.Metadata.GetWebpMetadata();
                 webpMeta.RepeatCount = 0;
-                masterImage.SaveAsWebp(filePath, new WebpEncoder { FileFormat = WebpFileFormatType.Lossless });
+                masterImage.SaveAsWebp(stream, new WebpEncoder { FileFormat = WebpFileFormatType.Lossless });
                 break;
 
             case GraphicFormat.Gif:
                 var gifMeta = masterImage.Metadata.GetGifMetadata();
                 gifMeta.RepeatCount = 0;
                 var gifQuantizer = CreatePaletteQuantizer(palette, transparentIndex: 0, transparent: true);
-                masterImage.SaveAsGif(filePath, new GifEncoder { Quantizer = gifQuantizer });
+                masterImage.SaveAsGif(stream, new GifEncoder { Quantizer = gifQuantizer });
                 break;
         }
     }

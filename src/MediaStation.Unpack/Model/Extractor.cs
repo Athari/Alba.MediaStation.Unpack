@@ -5,6 +5,13 @@ using MediaStation.Unpack.Metadata;
 
 namespace MediaStation.Unpack.Model;
 
+public enum DuplicateScope
+{
+    None,
+    Global,
+    Context
+}
+
 public class ExtractOptions
 {
     public string OutputPath { get; set; } = "extracted";
@@ -17,6 +24,7 @@ public class ExtractOptions
     public List<GraphicFormat> ImageFormats { get; set; } = [GraphicFormat.Png];
     public List<GraphicFormat> AnimationFormats { get; set; } = [GraphicFormat.Png];
     public bool DeoptimizeMovieSharedImages { get; set; } = true;
+    public DuplicateScope SkipDuplicates { get; set; } = DuplicateScope.None;
 }
 
 public class Extractor
@@ -24,6 +32,7 @@ public class Extractor
     private readonly MediaStationTitle _title;
     private readonly ExtractOptions _options;
     private readonly Action<string> _logger;
+    private readonly Dictionary<string, string> _seenFileHashes = new();
 
     public Extractor(MediaStationTitle title, ExtractOptions options, Action<string>? logger = null)
     {
@@ -34,6 +43,7 @@ public class Extractor
 
     public void Run()
     {
+        _seenFileHashes.Clear();
         _logger($"Starting extraction for '{_title.GameTitle}' (Version {_title.Version.Major}.{_title.Version.Minor}r{_title.Version.Patch})");
         Directory.CreateDirectory(_options.OutputPath);
 
@@ -63,6 +73,11 @@ public class Extractor
 
     private void ExtractContext(ushort contextId)
     {
+        if (_options.SkipDuplicates == DuplicateScope.Context)
+        {
+            _seenFileHashes.Clear();
+        }
+
         var context = _title.LoadContext(contextId);
         string contextDirName = string.IsNullOrWhiteSpace(context.Name)
             ? $"Context_{contextId:D3}"
@@ -76,6 +91,7 @@ public class Extractor
         int spriteCount = 0;
         int movieCount = 0;
         int soundCount = 0;
+        int skippedCount = 0;
 
         bool exportJsonAnimate = (_options.ExtractSprites || _options.ExtractMovies) &&
             _options.AnimationFormats.Contains(GraphicFormat.JsonAnimate);
@@ -94,12 +110,17 @@ public class Extractor
                     string baseName = !string.IsNullOrWhiteSpace(imgActor.Name)
                         ? $"Image_{CleanAssetName(imgActor.Name, ImagePrefixes)}"
                         : $"Image_{imgActor.Id}";
+                    bool anySaved = false;
                     foreach (var format in formats)
                     {
                         string filePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, imgActor.Id, format.GetExtension(), _logger);
-                        ImageExporter.SaveImage(imgActor.Bitmap, palette, filePath, format);
+                        if (SaveFile(filePath, stream => ImageExporter.SaveImage(imgActor.Bitmap, palette, stream, format), ref skippedCount))
+                        {
+                            anySaved = true;
+                        }
                     }
-                    imageCount++;
+                    if (anySaved)
+                        imageCount++;
                 }
             }
 
@@ -111,12 +132,17 @@ public class Extractor
                     string baseName = !string.IsNullOrWhiteSpace(diskImg.Name)
                         ? $"Image_{CleanAssetName(diskImg.Name, ImagePrefixes)}"
                         : $"DiskImage_{diskImg.Id}";
+                    bool anySaved = false;
                     foreach (var format in formats)
                     {
                         string filePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, diskImg.Id, format.GetExtension(), _logger);
-                        ImageExporter.SaveImage(composite, palette, filePath, format);
+                        if (SaveFile(filePath, stream => ImageExporter.SaveImage(composite, palette, stream, format), ref skippedCount))
+                        {
+                            anySaved = true;
+                        }
                     }
-                    imageCount++;
+                    if (anySaved)
+                        imageCount++;
                 }
             }
         }
@@ -136,12 +162,17 @@ public class Extractor
                     // Save master animation (all frames)
                     var masterFrames = sprite.Frames.Select(f => (f.Pixmap, f.Origin)).ToList();
                     string masterBase = $"Sprite_{spriteName}";
+                    bool anyMasterSaved = false;
                     foreach (var format in formats)
                     {
                         string masterPath = GetUniqueFilePath(usedPaths, contextOutDir, masterBase, sprite.Id, format.GetExtension(), _logger);
-                        ImageExporter.SaveSpriteAnimation(masterFrames, palette, (int)sprite.FrameRate, masterPath, format);
+                        if (SaveFile(masterPath, stream => ImageExporter.SaveSpriteAnimation(masterFrames, palette, (int)sprite.FrameRate, stream, format), ref skippedCount))
+                        {
+                            anyMasterSaved = true;
+                        }
                     }
-                    spriteCount++;
+                    if (anyMasterSaved)
+                        spriteCount++;
 
                     // Save custom sub-clips if any
                     foreach (var clip in sprite.Clips.Values)
@@ -175,7 +206,7 @@ public class Extractor
                             foreach (var format in formats)
                             {
                                 string clipPath = GetUniqueFilePath(usedPaths, contextOutDir, clipBase, clip.Id, format.GetExtension(), _logger);
-                                ImageExporter.SaveSpriteAnimation(clipFrames, palette, (int)sprite.FrameRate, clipPath, format);
+                                SaveFile(clipPath, stream => ImageExporter.SaveSpriteAnimation(clipFrames, palette, (int)sprite.FrameRate, stream, format), ref skippedCount);
                             }
                         }
                     }
@@ -227,12 +258,17 @@ public class Extractor
 
                         if (frameItems.Count > 0)
                         {
+                            bool anyMovieSaved = false;
                             foreach (var format in formats)
                             {
                                 string moviePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, movie.Id, format.GetExtension(), _logger);
-                                ImageExporter.SaveMovieAnimation(frameItems, palette, moviePath, format);
+                                if (SaveFile(moviePath, stream => ImageExporter.SaveMovieAnimation(frameItems, palette, stream, format), ref skippedCount))
+                                {
+                                    anyMovieSaved = true;
+                                }
                             }
-                            movieCount++;
+                            if (anyMovieSaved)
+                                movieCount++;
                         }
 
                         // Check if multiple layers exist
@@ -265,7 +301,7 @@ public class Extractor
                                     foreach (var format in formats)
                                     {
                                         string layerPath = GetUniqueFilePath(usedPaths, contextOutDir, layerBase, layerId, format.GetExtension(), _logger);
-                                        ImageExporter.SaveMovieAnimation(layerFrames, palette, layerPath, format);
+                                        SaveFile(layerPath, stream => ImageExporter.SaveMovieAnimation(layerFrames, palette, stream, format), ref skippedCount);
                                     }
                                 }
                             }
@@ -277,8 +313,10 @@ public class Extractor
                 if (movie.Audio.HasAudio)
                 {
                     string wavPath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, movie.Id, "wav", _logger);
-                    movie.Audio.SaveAsWav(wavPath);
-                    soundCount++;
+                    if (SaveFile(wavPath, stream => movie.Audio.WriteWav(stream), ref skippedCount))
+                    {
+                        soundCount++;
+                    }
                 }
             }
         }
@@ -312,16 +350,67 @@ public class Extractor
                         : $"{sound.Id}";
                     string baseName = $"Sound_{soundName}";
                     string filePath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, sound.Id, "wav", _logger);
-                    sound.Sequence.SaveAsWav(filePath);
-                    soundCount++;
+                    if (SaveFile(filePath, stream => sound.Sequence.WriteWav(stream), ref skippedCount))
+                    {
+                        soundCount++;
+                    }
                 }
             }
         }
 
-        if (_options.Verbose || (imageCount + spriteCount + movieCount + soundCount > 0))
+        if (_options.Verbose || (imageCount + spriteCount + movieCount + soundCount > 0 || skippedCount > 0))
         {
-            _logger($"[{contextDirName}] Extracted: {imageCount} images, {spriteCount} sprites, {movieCount} movies, {soundCount} audio tracks.");
+            string skippedStr = skippedCount > 0 ? $", {skippedCount} skipped" : "";
+            _logger($"[{contextDirName}] Extracted: {imageCount} images, {spriteCount} sprites, {movieCount} movies, {soundCount} audio tracks{skippedStr}.");
         }
+    }
+
+    private bool SaveFile(string filePath, Action<Stream> writeAction, ref int skippedCount)
+    {
+        if (_options.SkipDuplicates == DuplicateScope.None)
+        {
+            string? dir = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+
+            using var fs = File.Create(filePath);
+            writeAction(fs);
+            return true;
+        }
+
+        using var ms = new MemoryStream();
+        writeAction(ms);
+        if (ms.Length == 0)
+            return false;
+
+        byte[] hashBytes = System.Security.Cryptography.SHA256.HashData(ms.GetBuffer().AsSpan(0, (int)ms.Length));
+        string hash = Convert.ToHexString(hashBytes);
+
+        if (_seenFileHashes.TryGetValue(hash, out var originalPath))
+        {
+            skippedCount++;
+            if (_options.Verbose)
+            {
+                string displayFile = Path.GetFileName(filePath);
+                string displayOriginal = string.Equals(Path.GetDirectoryName(filePath), Path.GetDirectoryName(originalPath), StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetFileName(originalPath)
+                    : $"{Path.GetFileName(Path.GetDirectoryName(originalPath))}/{Path.GetFileName(originalPath)}";
+                _logger($"Skipping duplicate '{displayFile}' (identical to '{displayOriginal}')");
+            }
+            return false;
+        }
+
+        _seenFileHashes[hash] = filePath;
+        string? outDir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(outDir))
+            Directory.CreateDirectory(outDir);
+
+        using (var fs = File.Create(filePath))
+        {
+            ms.Position = 0;
+            ms.CopyTo(fs);
+        }
+        return true;
     }
 
     private static readonly string[] ImagePrefixes = ["image_", "img_"];

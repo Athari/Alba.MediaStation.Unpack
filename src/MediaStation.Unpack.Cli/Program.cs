@@ -43,6 +43,12 @@ public static class Program
             Aliases = { "-v" }
         };
 
+        var skipDuplicatesOption = new Option<string?>("--skip-duplicates")
+        {
+            Description = "Skip duplicate output files by content: 'global' (across all contexts) or 'context' (within each context)",
+            Aliases = { "-sd" }
+        };
+
         var rootCommand = new RootCommand("Extracts graphics (PNG/APNG/WebP/GIF) and audio (WAV) from MediaStation game archives (.STM, .CXT)")
         {
             pathArgument,
@@ -50,6 +56,7 @@ public static class Program
             extractOption,
             imageFormatOption,
             animationFormatOption,
+            skipDuplicatesOption,
             verboseOption
         };
 
@@ -66,6 +73,7 @@ public static class Program
             string extractStr = parseResult.GetValue(extractOption) ?? "graphics";
             string imageFormatStr = parseResult.GetValue(imageFormatOption) ?? "png";
             string animFormatStr = parseResult.GetValue(animationFormatOption) ?? "png";
+            string? skipDuplicatesStr = parseResult.GetValue(skipDuplicatesOption);
             bool verbose = parseResult.GetValue(verboseOption);
 
             var options = ParseExtractOptions(extractStr);
@@ -73,6 +81,7 @@ public static class Program
             options.Verbose = verbose;
             options.ImageFormats = ParseFormats(imageFormatStr);
             options.AnimationFormats = ParseFormats(animFormatStr);
+            options.SkipDuplicates = ParseDuplicateScope(skipDuplicatesStr);
 
             try
             {
@@ -163,5 +172,18 @@ public static class Program
         options.ExtractAudio = parts.Contains("audio") || parts.Contains("sound") || parts.Contains("sounds") || parts.Contains("snd");
 
         return options;
+    }
+
+    private static DuplicateScope ParseDuplicateScope(string? scopeStr)
+    {
+        if (string.IsNullOrWhiteSpace(scopeStr))
+            return DuplicateScope.None;
+
+        return scopeStr.Trim().ToLowerInvariant() switch
+        {
+            "global" => DuplicateScope.Global,
+            "context" => DuplicateScope.Context,
+            _ => throw new ArgumentException($"Invalid duplicate scope '{scopeStr}'. Expected 'global' or 'context'.")
+        };
     }
 }
