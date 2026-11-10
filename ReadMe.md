@@ -39,7 +39,7 @@ dotnet run --project src/MediaStation.Unpack.Cli -- <path-to-game-boot-or-contex
 | Option | Description |
 |---|---|
 | `-o, --output <dir>` | Destination directory for extracted files. |
-| `-e, --extract <types>` | Asset types to extract: `graphics` (default: images, sprites, movies), `all` (graphics + audio), or comma-separated list (`images`, `sprites`, `movies`, `audio`). |
+| `-e, --extract <types>` | Asset types to extract: `graphics` (default: images, sprites, movies), `all` (all assets), or comma-separated list (`images`, `sprites`, `movies`, `sounds`, `audio`). |
 | `-if, --image-format <formats>` | Static image formats: comma-separated list (`png`, `webp`, `gif`). Default: `png`. (WebP is always lossless; GIF preserves exact 8-bit palette). |
 | `-af, --animation-format <formats>` | Animation formats for sprites and movies: comma-separated list (`png`, `webp`, `gif`, `json-animate`). Default: `png`. (`json-animate` exports Adobe Animate / After Effects `Animation.json` packages with individual sprite PNGs and audio). |
 | `-v, --verbose` | Enable detailed progress logging. |

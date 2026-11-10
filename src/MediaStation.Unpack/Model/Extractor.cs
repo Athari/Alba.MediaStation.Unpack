@@ -19,6 +19,7 @@ public class ExtractOptions
     public bool ExtractSprites { get; set; } = true;
     public bool ExtractMovies { get; set; } = true;
     public bool ExtractAudio { get; set; } = false;
+    public bool ExtractSounds { get; set; } = false;
     public ushort? ContextFilter { get; set; }
     public bool Verbose { get; set; }
     public List<GraphicFormat> ImageFormats { get; set; } = [GraphicFormat.Png];
@@ -90,6 +91,7 @@ public class Extractor
         int imageCount = 0;
         int spriteCount = 0;
         int movieCount = 0;
+        int audioCount = 0;
         int soundCount = 0;
         int skippedCount = 0;
 
@@ -215,7 +217,7 @@ public class Extractor
         }
 
         // 3. Movies
-        if (_options.ExtractMovies)
+        if (_options.ExtractMovies || _options.ExtractAudio)
         {
             var formats = rasterAnimFormats;
             foreach (var movie in context.Movies)
@@ -225,7 +227,7 @@ public class Extractor
                     : $"{movie.Id}";
                 string baseName = $"Movie_{movieName}";
 
-                if (movie.Frames.Count > 0 && movie.Images.Count > 0)
+                if (_options.ExtractMovies && movie.Frames.Count > 0 && movie.Images.Count > 0)
                 {
                     movie.DecompressAllFrames();
 
@@ -310,12 +312,12 @@ public class Extractor
                 }
 
                 // Movie synchronized audio
-                if (movie.Audio.HasAudio)
+                if (_options.ExtractAudio && movie.Audio.HasAudio)
                 {
                     string wavPath = GetUniqueFilePath(usedPaths, contextOutDir, baseName, movie.Id, "wav", _logger);
                     if (SaveFile(wavPath, stream => movie.Audio.WriteWav(stream), ref skippedCount))
                     {
-                        soundCount++;
+                        audioCount++;
                     }
                 }
             }
@@ -326,7 +328,8 @@ public class Extractor
         {
             var animateOptions = new AnimateJsonExportOptions
             {
-                DeoptimizeMovieSharedImages = _options.DeoptimizeMovieSharedImages
+                DeoptimizeMovieSharedImages = _options.DeoptimizeMovieSharedImages,
+                ExportAudio = _options.ExtractAudio
             };
 
             AnimateJsonExporter.ExportContext(
@@ -339,7 +342,7 @@ public class Extractor
         }
 
         // 5. Standalone Sounds
-        if (_options.ExtractAudio)
+        if (_options.ExtractSounds)
         {
             foreach (var sound in context.Sounds)
             {
@@ -358,10 +361,10 @@ public class Extractor
             }
         }
 
-        if (_options.Verbose || (imageCount + spriteCount + movieCount + soundCount > 0 || skippedCount > 0))
+        if (_options.Verbose || (imageCount + spriteCount + movieCount + audioCount + soundCount > 0 || skippedCount > 0))
         {
             string skippedStr = skippedCount > 0 ? $", {skippedCount} skipped" : "";
-            _logger($"[{contextDirName}] Extracted: {imageCount} images, {spriteCount} sprites, {movieCount} movies, {soundCount} audio tracks{skippedStr}.");
+            _logger($"[{contextDirName}] Extracted: {imageCount} images, {spriteCount} sprites, {movieCount} movies, {audioCount} audio tracks, {soundCount} sounds{skippedStr}.");
         }
     }
 

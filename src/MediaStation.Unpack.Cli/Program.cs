@@ -21,7 +21,7 @@ public static class Program
 
         var extractOption = new Option<string>("--extract")
         {
-            Description = "Asset types to extract: 'graphics' (default: images, sprites, movies), 'all' (graphics + audio), or comma-separated ('images', 'sprites', 'movies', 'audio')",
+            Description = "Asset types to extract: 'graphics' (default: images, sprites, movies), 'all' (all assets), or comma-separated ('images', 'sprites', 'movies', 'sounds', 'audio')",
             Aliases = { "-e" }
         };
 
@@ -132,7 +132,7 @@ public static class Program
         return list.Count > 0 ? list : [GraphicFormat.Png];
     }
 
-    private static ExtractOptions ParseExtractOptions(string extractStr)
+    public static ExtractOptions ParseExtractOptions(string extractStr)
     {
         var options = new ExtractOptions();
         string normalized = extractStr.Trim().ToLowerInvariant();
@@ -143,6 +143,7 @@ public static class Program
             options.ExtractSprites = true;
             options.ExtractMovies = true;
             options.ExtractAudio = true;
+            options.ExtractSounds = true;
             return options;
         }
 
@@ -152,24 +153,17 @@ public static class Program
             options.ExtractSprites = true;
             options.ExtractMovies = true;
             options.ExtractAudio = false;
-            return options;
-        }
-
-        if (normalized is "audio")
-        {
-            options.ExtractImages = false;
-            options.ExtractSprites = false;
-            options.ExtractMovies = false;
-            options.ExtractAudio = true;
+            options.ExtractSounds = false;
             return options;
         }
 
         // Custom comma-separated list
         var parts = normalized.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        options.ExtractImages = parts.Contains("images") || parts.Contains("image") || parts.Contains("img");
-        options.ExtractSprites = parts.Contains("sprites") || parts.Contains("sprite") || parts.Contains("spr");
-        options.ExtractMovies = parts.Contains("movies") || parts.Contains("movie") || parts.Contains("mov");
-        options.ExtractAudio = parts.Contains("audio") || parts.Contains("sound") || parts.Contains("sounds") || parts.Contains("snd");
+        options.ExtractImages = parts.Contains("images") || parts.Contains("image");
+        options.ExtractSprites = parts.Contains("sprites") || parts.Contains("sprite");
+        options.ExtractMovies = parts.Contains("movies") || parts.Contains("movie");
+        options.ExtractSounds = parts.Contains("sounds") || parts.Contains("sound");
+        options.ExtractAudio = parts.Contains("audio");
 
         return options;
     }

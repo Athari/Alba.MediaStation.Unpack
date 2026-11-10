@@ -22,6 +22,11 @@ public class AnimateJsonExportOptions
     /// - Dependent frames sharing those time slices are composited with the base image.
     /// </summary>
     public bool DeoptimizeMovieSharedImages { get; set; } = true;
+
+    /// <summary>
+    /// When true, exports synchronized movie audio tracks (.wav) alongside frame assets.
+    /// </summary>
+    public bool ExportAudio { get; set; } = true;
 }
 
 public static class AnimateJsonExporter
@@ -92,8 +97,8 @@ public static class AnimateJsonExporter
                 }
             }
 
-            // Export synchronized audio if present
-            if (movie.Audio.HasAudio)
+            // Export synchronized audio if present and audio export is enabled
+            if (options.ExportAudio && movie.Audio.HasAudio)
             {
                 string wavPath = Path.Combine(spritesDir, $"{symName}.wav");
                 if (!File.Exists(wavPath))

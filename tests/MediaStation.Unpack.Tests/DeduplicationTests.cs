@@ -113,6 +113,52 @@ public class DeduplicationTests
         }
     }
 
+    [Fact]
+    public void Context218_LionKing_MovieGif_WithoutAudio_DoesNotExportWav()
+    {
+        string cxtPath = @"Z:\DATA\218.CXT";
+        if (!File.Exists(cxtPath))
+            return;
+
+        var title = new MediaStationTitle(cxtPath);
+        title.LoadManifest();
+
+        string tempDir = Path.Combine(Path.GetTempPath(), "ms_test_no_wav_" + Guid.NewGuid().ToString("N"));
+        var logs = new List<string>();
+
+        try
+        {
+            var options = new ExtractOptions
+            {
+                OutputPath = tempDir,
+                ExtractImages = false,
+                ExtractSprites = false,
+                ExtractMovies = true,
+                ExtractAudio = false,
+                AnimationFormats = [GraphicFormat.Gif],
+                SkipDuplicates = DuplicateScope.None,
+                Verbose = true
+            };
+
+            var extractor = new Extractor(title, options, logs.Add);
+            extractor.Run();
+
+            string contextDir = Path.Combine(tempDir, "Context_218");
+            Assert.True(Directory.Exists(contextDir));
+
+            // Movie 1022 gif should exist
+            Assert.True(File.Exists(Path.Combine(contextDir, "Movie_1022.gif")));
+
+            // Zero WAV audio tracks should exist
+            Assert.Empty(Directory.EnumerateFiles(contextDir, "*.wav"));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
+
     [Theory]
     [InlineData("global", DuplicateScope.Global)]
     [InlineData("GLOBAL", DuplicateScope.Global)]
