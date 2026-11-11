@@ -1,13 +1,7 @@
-using System.Text.Json;
-using MediaStation.Unpack.Actors;
 using MediaStation.Unpack.Cli;
-using MediaStation.Unpack.Core;
-using MediaStation.Unpack.Graphics;
-using MediaStation.Unpack.Metadata;
-using MediaStation.Unpack.Model;
 using Xunit;
 
-namespace MediaStation.Unpack.Tests;
+namespace MediaStation.Unpack.Tests.Unit.Cli;
 
 public class ExtractOptionsTests
 {
@@ -81,46 +75,5 @@ public class ExtractOptionsTests
         Assert.False(options.ExtractMovies);
         Assert.False(options.ExtractAudio);
         Assert.False(options.ExtractSounds);
-    }
-
-    [Fact]
-    public void AnimateJsonExporter_ExportAudioFalse_DoesNotWriteWav()
-    {
-        string tempDir = Path.Combine(Path.GetTempPath(), "ms_test_animate_no_audio_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-
-        try
-        {
-            var context = new MediaStationContext { ContextId = 1, Name = "TestContext" };
-            var palette = new Palette();
-
-            var pix = new PixMapImage(new ImageInfo(10, 10), new byte[10 * 10]);
-            var movie = new StreamMovieActor { Id = 10, Name = "Movie_Sample" };
-            movie.Images.Add(new MovieImageData(1, 100, pix));
-            movie.Frames.Add(new MovieFrame
-            {
-                LayerId = 1,
-                Index = 1,
-                StartInMilliseconds = 0,
-                EndInMilliseconds = 100,
-                LeftTop = new Point(0, 0),
-                ZIndex = 0
-            });
-            movie.Audio.AppendPcm(new byte[100]);
-            context.Actors[10] = movie;
-
-            var options = new AnimateJsonExportOptions { ExportAudio = false };
-            AnimateJsonExporter.ExportContext(context, palette, tempDir, options);
-
-            string spritesDir = Path.Combine(tempDir, "sprites");
-            Assert.True(Directory.Exists(spritesDir));
-            Assert.True(File.Exists(Path.Combine(spritesDir, "Movie_Sample_img_0001.png")));
-            Assert.False(File.Exists(Path.Combine(spritesDir, "Movie_Sample.wav")));
-        }
-        finally
-        {
-            if (Directory.Exists(tempDir))
-                Directory.Delete(tempDir, true);
-        }
     }
 }

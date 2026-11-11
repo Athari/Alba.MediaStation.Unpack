@@ -168,7 +168,7 @@ public static class Program
         return options;
     }
 
-    private static DuplicateScope ParseDuplicateScope(string? scopeStr)
+    internal static DuplicateScope ParseDuplicateScope(string? scopeStr)
     {
         if (string.IsNullOrWhiteSpace(scopeStr))
             return DuplicateScope.None;

@@ -4,6 +4,7 @@
     <Project Path="src/MediaStation.Unpack/MediaStation.Unpack.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/MediaStation.Unpack.Tests/MediaStation.Unpack.Tests.csproj" />
+    <Project Path="tests/MediaStation.Unpack.Tests.Unit/MediaStation.Unpack.Tests.Unit.csproj" />
+    <Project Path="tests/MediaStation.Unpack.Tests.Integration/MediaStation.Unpack.Tests.Integration.csproj" />
   </Folder>
 </Solution>
